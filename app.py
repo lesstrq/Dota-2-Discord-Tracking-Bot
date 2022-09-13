@@ -5,48 +5,28 @@ import psycopg2
 import random
 import requests
 import json
+import misc
+from psycopg2.errors import UniqueViolation
 
 OPENDOTA_API_URL = "https://api.opendota.com/api/"
 
-def get_rank(n):
-    rank_names = {
-        1: "Herald",
-        2: "Guardian",
-        3: "Crusader",
-        4: "Archon",
-        5: "Legend",
-        6: "Ancient",
-        7: "Divine",
-        8: "Immortal"
-    }
-    rank_stars = {
-        0: "",
-        1: "I",
-        2: "II",
-        3: "III",
-        4: "IV",
-        5: "V"
-    }
-
-    return f"{rank_names[n // 10]} {rank_stars[n % 10]}"
-
 insert_query = "INSERT INTO dota_track.discord_to_steam VALUES ({}, {})"
 
-try:
-    connection = psycopg2.connect(user=DATABASE_NAME,
+
+def connect():
+    return psycopg2.connect(user=DATABASE_NAME,
                                   password=DATABASE_PASSWORD,
                                   host=DATABASE_SERVER,
-                                  port="5432",
+                                  port=DATABASE_PORT,
                                   database=DATABASE_NAME)
 
-    cursor = connection.cursor()
-    schema_query = f'''
-    CREATE SCHEMA IF NOT EXISTS dota_track
-    AUTHORIZATION {DATABASE_NAME};
-    '''
-    cursor.execute(schema_query)
-    connection.commit()
-    print(connection.get_dsn_parameters())
+
+try:
+    connection = connect()
+    pars = connection.get_dsn_parameters()
+    print(f"{misc.get_time()} Successfully connected to DB {pars['dbname']} as user {pars['user']}")
+    print(f"{misc.get_time()} Host: {pars['host']}")
+    connection.close()
 
 except Exception as e:
     print(e)
@@ -55,8 +35,8 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-description = '''My test bot
-idk im juss playin here
+description = '''
+This is a bot that can show information about Dota 2 matches and players
 '''
 
 bot = commands.Bot(command_prefix='?', description=description, intents=intents)
@@ -71,24 +51,82 @@ async def on_ready():
 @bot.command()
 async def bind(ctx, dota_id):
     try:
-        print(insert_query.format(ctx.author.id, dota_id))
+        connection = connect()
+        cursor = connection.cursor()
+        cursor.execute(f"SELECT dota_id FROM dota_track.discord_to_steam WHERE discord_id='{ctx.author.id}'")
+        dota_id_in_db = cursor.fetchone()
+        print(dota_id_in_db)
+        if dota_id_in_db:
+            player_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id_in_db[0]}").json()
+            nickname = player_info["profile"]["personaname"]
+            embed = discord.Embed(title="Something went wrong!",
+                                  description=f"Your discord account is already bound to Dota 2 account named **{nickname}**"
+                                              f"+. \n Use **?unbind** command if you want to unbind this account and bind a new one.",
+                                  color=0xff0000)
+            await ctx.send(embed=embed)
+            return
+        print(f"{misc.get_time()} Executing {insert_query.format(ctx.author.id, dota_id)}")
         cursor.execute(insert_query.format(ctx.author.id, dota_id))
         connection.commit()
+        print(f"{misc.get_time()} Inserted [{ctx.author.id}, {dota_id}] in dota_track.discord_to_steam")
+
         player_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}").json()
         nickname = player_info["profile"]["personaname"]
-        embed = discord.Embed(title="We're good!", description=f"Successfully bound <@{ctx.author.id}> to **{nickname}**", color=0x7CFC00)
-        embed.set_thumbnail(url=player_info["profile"]["avatarfull"])
         win, lose = requests.get(OPENDOTA_API_URL + f"players/{dota_id}/wl").json().values()
         winrate = round(100 * win / (win + lose), 2)
-        embed.add_field(name="W - L", value=f"{win} - {lose} ({winrate}%)", inline=True)
-        rank = get_rank(player_info['rank_tier'])
+
+        rank = misc.get_rank(player_info['rank_tier'])
         if player_info['leaderboard_rank']:
             rank += f"{player_info['leaderboard_rank']}"
-        embed.add_field(name="MMR", value=f"Rank: {rank}", inline=True)
+
+        embed = discord.Embed(title="We're good!",
+                              description=f"Successfully bound <@{ctx.author.id}> to **{nickname}**",
+                              color=0x7CFC00)
+        embed.set_thumbnail(url=player_info["profile"]["avatarfull"])
+        embed.add_field(name="W - L", value=f"{win} - {lose} ({winrate}%)", inline=True)
+        embed.add_field(name="Rank", value=f"{rank}", inline=True)
+
+        connection.close()
         await ctx.send(embed=embed)
-    except Exception as e:
-        print(e)
-        embed = discord.Embed(title="Something went wrong!", description="Make sure your match history is open and try again!", color=0xff0000)
+    except KeyError as ke:
+        connection = connect()
+        cursor = connection.cursor()
+        print(f"{misc.get_time()} Someone with a closed profile tried to bind his account")
+        delete_query = f"delete from dota_track.discord_to_steam where discord_id='{ctx.author.id}'"
+        print(f"{misc.get_time()} Executing {delete_query}")
+        cursor.execute(delete_query)
+        connection.commit()
+        embed = discord.Embed(title="Something went wrong!",
+                              description="Make sure your match history is public and try again! \n To check if it is, go to *Settings* -> *Social* -> *Social* and look at the \n **Expose Public Match Data** option",
+                              color=0xff0000)
+        connection.close()
         await ctx.send(embed=embed)
+    except UniqueViolation:
+        connection = connect()
+        cursor = connection.cursor()
+        cursor.execute(f"SELECT dota_id FROM dota_track.discord_to_steam WHERE discord_id='{ctx.author.id}'")
+        dota_id = cursor.fetchall()
+        player_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}").json()
+        nickname = player_info["profile"]["personaname"]
+        embed = discord.Embed(title="Something went wrong!",
+                              description=f"Your discord account is already bound to Dota 2 account named {nickname}. \n Use **?unbind** command if you want to unbind this account and bind a new one.",
+                              color=0xff0000)
+        connection.close()
+        await ctx.send(embed=embed)
+
+
+@bot.command()
+async def unbind(ctx):
+    connection = connect()
+    cursor = connection.cursor()
+    delete_query = f"delete from dota_track.discord_to_steam where discord_id='{ctx.author.id}'"
+    print(f"{misc.get_time()} Executing {delete_query}")
+    cursor.execute(delete_query)
+    connection.commit()
+    embed = discord.Embed(title="Everything went smooth!",
+                          description=f"Successfully unbound",
+                          color=0x7CFC00)
+    connection.close()
+    await ctx.send(embed=embed)
 
 bot.run(DISCORD_TOKEN)
