@@ -129,4 +129,19 @@ async def unbind(ctx):
     connection.close()
     await ctx.send(embed=embed)
 
+
+@bot.command()
+async def recent(ctx):
+    connection = connect()
+    cursor = connection.cursor()
+    query = f"SELECT dota_id FROM dota_track.discord_to_steam WHERE discord_id='{ctx.author.id}'"
+    cursor.execute(query)
+    dota_id = cursor.fetchone()[0]
+    game_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}/matches?limit=1").json()[0]
+    player_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}").json()
+    nickname = player_info["profile"]["personaname"]
+    embed = discord.Embed(title=f"Last {nickname}'s match:",
+                          description=f"Duration: {game_info['duration'] // 60}:{game_info['duration'] % 60}")
+    await ctx.send(embed=embed)
+
 bot.run(DISCORD_TOKEN)
