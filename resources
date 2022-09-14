@@ -2,6 +2,10 @@ discord.ext.commands Documentation - https://discordpy.readthedocs.io/en/latest/
 discord bots examples - https://github.com/Rapptz/discord.py/tree/master/examples
 the example i've been looking through when i stopped working - https://github.com/Rapptz/discord.py/blob/master/examples/basic_bot.py
 
+working on images:
+https://habr.com/ru/post/519454/
+https://pillow.readthedocs.io/en/stable/reference/Image.html#
+
+
 to do:
-create a list of functions my bot need to have
-design some example messages
+create a function that will create an image of items the hero had

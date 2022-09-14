@@ -140,8 +140,18 @@ async def recent(ctx):
     game_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}/matches?limit=1").json()[0]
     player_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}").json()
     nickname = player_info["profile"]["personaname"]
+    cursor.execute(
+        f"SELECT localized_name, scoreboard_icon_url FROM dota_track.heroes_data WHERE hero_id={game_info['hero_id']}")
+    hero = cursor.fetchone()
+    hero_name = hero[0]
+    icon_url = hero[1]
+    duration = {'mins': game_info['duration'] // 60,
+                'secs': ("0" if game_info['duration'] % 60 < 10 else "") + str(game_info['duration'] % 60)}
+    result = "Win" if (game_info['player_slot'] > 100 and not game_info['radiant_win']) or (game_info['player_slot'] < 100 and game_info['radiant_win']) else "Lose"
     embed = discord.Embed(title=f"Last {nickname}'s match:",
-                          description=f"Duration: {game_info['duration'] // 60}:{game_info['duration'] % 60}")
+                          description=f"Hero: **{hero_name}**\nDuration: **{duration['mins']}:{duration['secs']}**\nResult: **{result} {':white_check_mark:' if result == 'Win' else ':x:'}**\nK/D/A: **{game_info['kills']}/{game_info['deaths']}/{game_info['assists']}**",
+                          color=(0xff0000 if result == "Lose" else 0x7cfc00))
+    embed.set_thumbnail(url=icon_url)
     await ctx.send(embed=embed)
 
 bot.run(DISCORD_TOKEN)
