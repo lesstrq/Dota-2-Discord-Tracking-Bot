@@ -7,8 +7,13 @@ import requests
 import json
 import misc
 from psycopg2.errors import UniqueViolation
+import picture
+import os
 
 OPENDOTA_API_URL = "https://api.opendota.com/api/"
+
+player_slots = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 128: 5, 129: 6, 130: 7, 131: 8, 132: 9}
+
 
 insert_query = "INSERT INTO dota_track.discord_to_steam VALUES ({}, {})"
 
@@ -138,6 +143,7 @@ async def recent(ctx):
     cursor.execute(query)
     dota_id = cursor.fetchone()[0]
     game_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}/matches?limit=1").json()[0]
+    detailed_game_info = requests.get(f"http://api.opendota.com/api/matches/{game_info['match_id']}").json()
     player_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}").json()
     nickname = player_info["profile"]["personaname"]
     cursor.execute(
@@ -148,10 +154,32 @@ async def recent(ctx):
     duration = {'mins': game_info['duration'] // 60,
                 'secs': ("0" if game_info['duration'] % 60 < 10 else "") + str(game_info['duration'] % 60)}
     result = "Win" if (game_info['player_slot'] > 100 and not game_info['radiant_win']) or (game_info['player_slot'] < 100 and game_info['radiant_win']) else "Lose"
+    queue = "**Played in** " + ("Solo Queue" if game_info['party_size'] == 1 else f"Party of {game_info['party_size']}") + (":bust_in_silhouette:" * game_info['party_size'])
+    player_slot = game_info['player_slot']
+    net_worth = detailed_game_info['players'][player_slots[player_slot]]['net_worth']
+    hero_damage = detailed_game_info['players'][player_slots[player_slot]]['hero_damage']
     embed = discord.Embed(title=f"Last {nickname}'s match:",
-                          description=f"Hero: **{hero_name}**\nDuration: **{duration['mins']}:{duration['secs']}**\nResult: **{result} {':white_check_mark:' if result == 'Win' else ':x:'}**\nK/D/A: **{game_info['kills']}/{game_info['deaths']}/{game_info['assists']}**",
+                          description=f"{queue}\n"
+                                      f"Hero: **{hero_name}**\n"
+                                      f"Duration: **{duration['mins']}:{duration['secs']}**\n"
+                                      f"Result: **{result} {':white_check_mark:' if result == 'Win' else ':x:'}**\n"
+                                      f"K/D/A: **{game_info['kills']}/{game_info['deaths']}/{game_info['assists']}**\n"
+                                      f"Net Worth: **{net_worth}**:money_with_wings:\n"
+                                      f"Hero Damage: **{hero_damage}**:crossed_swords:",
                           color=(0xff0000 if result == "Lose" else 0x7cfc00))
     embed.set_thumbnail(url=icon_url)
-    await ctx.send(embed=embed)
+
+    players = detailed_game_info['players']
+    items = {}
+    for player in players:
+        if str(player['account_id']) == dota_id:
+            for slot in picture.slots:
+                items[slot] = player[slot]
+
+    filename = picture.create_image(items)
+    file = discord.File(filename, filename="image.png")
+    embed.set_image(url="attachment://image.png")
+    await ctx.send(file=file, embed=embed)
+    os.remove(filename)
 
 bot.run(DISCORD_TOKEN)
