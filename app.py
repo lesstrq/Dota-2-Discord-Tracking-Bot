@@ -9,6 +9,7 @@ import misc
 from psycopg2.errors import UniqueViolation
 import picture
 import os
+from sshtunnel import SSHTunnelForwarder
 
 OPENDOTA_API_URL = "https://api.opendota.com/api/"
 
@@ -136,50 +137,70 @@ async def unbind(ctx):
 
 
 @bot.command()
-async def recent(ctx):
+async def recent(ctx, amount=1):
     connection = connect()
     cursor = connection.cursor()
     query = f"SELECT dota_id FROM dota_track.discord_to_steam WHERE discord_id='{ctx.author.id}'"
     cursor.execute(query)
     dota_id = cursor.fetchone()[0]
-    game_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}/matches?limit=1").json()[0]
-    detailed_game_info = requests.get(f"http://api.opendota.com/api/matches/{game_info['match_id']}").json()
-    player_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}").json()
-    nickname = player_info["profile"]["personaname"]
-    cursor.execute(
-        f"SELECT localized_name, scoreboard_icon_url FROM dota_track.heroes_data WHERE hero_id={game_info['hero_id']}")
-    hero = cursor.fetchone()
-    hero_name = hero[0]
-    icon_url = hero[1]
-    duration = {'mins': game_info['duration'] // 60,
-                'secs': ("0" if game_info['duration'] % 60 < 10 else "") + str(game_info['duration'] % 60)}
-    result = "Win" if (game_info['player_slot'] > 100 and not game_info['radiant_win']) or (game_info['player_slot'] < 100 and game_info['radiant_win']) else "Lose"
-    queue = "**Played in** " + ("Solo Queue" if game_info['party_size'] == 1 else f"Party of {game_info['party_size']}") + (":bust_in_silhouette:" * game_info['party_size'])
-    player_slot = game_info['player_slot']
-    net_worth = detailed_game_info['players'][player_slots[player_slot]]['net_worth']
-    hero_damage = detailed_game_info['players'][player_slots[player_slot]]['hero_damage']
-    embed = discord.Embed(title=f"Last {nickname}'s match:",
-                          description=f"{queue}\n"
-                                      f"Hero: **{hero_name}**\n"
-                                      f"Duration: **{duration['mins']}:{duration['secs']}**\n"
-                                      f"Result: **{result} {':white_check_mark:' if result == 'Win' else ':x:'}**\n"
-                                      f"K/D/A: **{game_info['kills']}/{game_info['deaths']}/{game_info['assists']}**\n"
-                                      f"Net Worth: **{net_worth}**:money_with_wings:\n"
-                                      f"Hero Damage: **{hero_damage}**:crossed_swords:",
-                          color=(0xff0000 if result == "Lose" else 0x7cfc00))
-    embed.set_thumbnail(url=icon_url)
+    games_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}/matches?limit={amount}").json()
+    for game_info in games_info:
+        detailed_game_info = requests.get(f"http://api.opendota.com/api/matches/{game_info['match_id']}").json()
+        player_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}").json()
+        nickname = player_info["profile"]["personaname"]
+        cursor.execute(
+            f"SELECT localized_name, scoreboard_icon_url FROM dota_track.heroes_data WHERE hero_id={game_info['hero_id']}")
+        hero = cursor.fetchone()
+        hero_name = hero[0]
+        icon_url = hero[1]
+        all_games_info = requests.get(OPENDOTA_API_URL + f'players/{dota_id}/matches?hero_id={game_info["hero_id"]}').json()
+        kills, deaths, assists = 0, 0, 0
+        for match in all_games_info:
+            print(match)
+            kills += match["kills"]
+            deaths += match["deaths"]
+            assists += match["assists"]
+        avg_kda = (kills + assists) / deaths
 
-    players = detailed_game_info['players']
-    items = {}
-    for player in players:
-        if str(player['account_id']) == dota_id:
-            for slot in picture.slots:
-                items[slot] = player[slot]
+        duration = {'mins': game_info['duration'] // 60,
+                    'secs': ("0" if game_info['duration'] % 60 < 10 else "") + str(game_info['duration'] % 60)}
+        result = "Win" if (game_info['player_slot'] > 100 and not game_info['radiant_win']) or (game_info['player_slot'] < 100 and game_info['radiant_win']) else "Lose"
+        queue = "**Played in** " + ("Solo Queue" if game_info['party_size'] == 1 else f"Party of {game_info['party_size']}") + (":bust_in_silhouette:" * game_info['party_size'])
+        player_slot = game_info['player_slot']
+        net_worth = detailed_game_info['players'][player_slots[player_slot]]['net_worth']
+        hero_damage = detailed_game_info['players'][player_slots[player_slot]]['hero_damage']
+        game_kda = (game_info['kills'] + game_info['assists']) / game_info['deaths']
+        kda_emoji = ""
+        if game_kda >= avg_kda:
+            kda_emoji = ":arrow_up_small:"
+        if game_kda < avg_kda:
+            kda_emoji = ":arrow_down_small:"
+        if game_kda > avg_kda * 2:
+            kda_emoji = ":arrow_double_up:"
+        if game_kda < avg_kda / 2:
+            kda_emoji = ":arrow_double_down:"
+        embed = discord.Embed(title=f"Last {nickname}'s match:",
+                              description=f"{queue}\n"
+                                          f"Hero: **{hero_name}**\n"
+                                          f"Duration: **{duration['mins']}:{duration['secs']}**\n"
+                                          f"Result: **{result} {':white_check_mark:' if result == 'Win' else ':x:'}**\n"
+                                          f"K/D/A: **{game_info['kills']}/{game_info['deaths']}/{game_info['assists']} {kda_emoji}**\n"
+                                          f"Net Worth: **{net_worth}**:money_with_wings:\n"
+                                          f"Hero Damage: **{hero_damage}**:crossed_swords:",
+                              color=(0xff0000 if result == "Lose" else 0x7cfc00))
+        embed.set_thumbnail(url=icon_url)
 
-    filename = picture.create_image(items)
-    file = discord.File(filename, filename="image.png")
-    embed.set_image(url="attachment://image.png")
-    await ctx.send(file=file, embed=embed)
-    os.remove(filename)
+        players = detailed_game_info['players']
+        items = {}
+        for player in players:
+            if str(player['account_id']) == dota_id:
+                for slot in picture.slots:
+                    items[slot] = player[slot]
+
+        filename = picture.create_image(items)
+        file = discord.File(filename, filename="image.png")
+        embed.set_image(url="attachment://image.png")
+        await ctx.send(file=file, embed=embed)
+        os.remove(filename)
 
 bot.run(DISCORD_TOKEN)
