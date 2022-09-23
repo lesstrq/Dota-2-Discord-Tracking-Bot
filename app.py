@@ -9,7 +9,6 @@ import misc
 from psycopg2.errors import UniqueViolation
 import picture
 import os
-from sshtunnel import SSHTunnelForwarder
 
 OPENDOTA_API_URL = "https://api.opendota.com/api/"
 
