@@ -158,3 +158,5 @@ for hero in heroes:
         cursor.execute(insert_query.format(HERO_ID_TO_PIC_URL[name], name))
 
 connection.commit()
+
+

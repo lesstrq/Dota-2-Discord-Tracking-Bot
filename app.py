@@ -164,7 +164,7 @@ async def recent(ctx, amount=1):
         duration = {'mins': game_info['duration'] // 60,
                     'secs': ("0" if game_info['duration'] % 60 < 10 else "") + str(game_info['duration'] % 60)}
         result = "Win" if (game_info['player_slot'] > 100 and not game_info['radiant_win']) or (game_info['player_slot'] < 100 and game_info['radiant_win']) else "Lose"
-        queue = "**Played in** " + ("Solo Queue" if game_info['party_size'] == 1 else f"Party of {game_info['party_size']}") + (":bust_in_silhouette:" * game_info['party_size'])
+        queue = "**Played in** " + ("Solo Queue" if game_info['party_size'] == 1 or not game_info['party_size'] else f"Party of {game_info['party_size']}") + (":bust_in_silhouette:" * game_info['party_size'])
         player_slot = game_info['player_slot']
         net_worth = detailed_game_info['players'][player_slots[player_slot]]['net_worth']
         hero_damage = detailed_game_info['players'][player_slots[player_slot]]['hero_damage']
@@ -195,11 +195,20 @@ async def recent(ctx, amount=1):
             if str(player['account_id']) == dota_id:
                 for slot in picture.slots:
                     items[slot] = player[slot]
+                skill_build = player['ability_upgrades_arr']
+                level = player['level']
 
-        filename = picture.create_image(items)
-        file = discord.File(filename, filename="image.png")
+        filename_inv = picture.create_image(items)
+        filename_skill = picture.create_skill_build_image(skill_build, level)
+        file_inv = discord.File(filename_inv, filename="image.png")
+        file_skill = discord.File(filename_skill, filename="image1.png")
         embed.set_image(url="attachment://image.png")
-        await ctx.send(file=file, embed=embed)
-        os.remove(filename)
+        files = [file_inv, file_skill]
+        await ctx.send(file=file_inv, embed=embed)
+        embed = discord.Embed(title='Skill Build:', color=(0xff0000 if result == "Lose" else 0x7cfc00))
+        embed.set_image(url="attachment://image1.png")
+        await ctx.send(file=file_skill, embed=embed)
+        os.remove(filename_inv)
+        os.remove(filename_skill)
 
 bot.run(DISCORD_TOKEN)
