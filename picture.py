@@ -1,13 +1,17 @@
-import requests
 from PIL import Image
 from PIL import ImageDraw
 import random
 from abilities_ids import ABILITIES_IDS
 from misc import hero_id_from_ability_id
-from constants_heroes import heroes
-from constants_hero_abilities import hero_abilities
+from constants.heroes import heroes
+from constants.hero_abilities import hero_abilities
 
-slots = ["item_0", "item_1", "item_2", "item_3", "item_4", "item_5", "backpack_0", "backpack_1", "backpack_2", "item_neutral"]
+DIRECTORY_TO_SAVE_IN = "temporary_pictures/"
+
+slots = ["item_0", "item_1", "item_2",
+         "item_3", "item_4", "item_5",
+         "backpack_0", "backpack_1", "backpack_2",
+         "item_neutral"]
 
 slot_coord = {"item_0": (6, 7),
               "item_1": (72, 7),
@@ -21,7 +25,10 @@ slot_coord = {"item_0": (6, 7),
               "item_neutral": (193, 32)}
 
 
-def create_image(items):
+def create_image(player):
+    items = {}
+    for slot in slots:
+        items[slot] = player[slot]
     mask_im = Image.new("L", (60, 43), 0)
     draw = ImageDraw.Draw(mask_im)
     draw.ellipse((8, 1, 52, 42), fill=255)
@@ -38,15 +45,14 @@ def create_image(items):
             continue
         inventory.paste(item_img, slot_coord[slot])
     filename = random.randint(1000000, 9999999)
-    inventory.save(f"assets/{filename}.png", quality=100)
-    return f"assets/{filename}.png"
+    inventory.save(f"{DIRECTORY_TO_SAVE_IN}{filename}.png", quality=100)
+    return f"{DIRECTORY_TO_SAVE_IN}{filename}.png"
 
 
 def left_or_right_talent(abilities_info, ability_name):
     for i in range(1, 9):
         if abilities_info["talents"][i - 1]["name"] == ability_name:
             return "right" if i % 2 else "left"
-
 
 
 def create_skill_build_image(abilities, level):
@@ -57,7 +63,6 @@ def create_skill_build_image(abilities, level):
         if j + 1 in [17, 19, 21, 22, 23, 24, 26]:
             temp.append(-1)
         else:
-            print(i, j)
             temp.append(abilities[i])
             i += 1
         j += 1
@@ -72,7 +77,8 @@ def create_skill_build_image(abilities, level):
             continue
         ability_name = ABILITIES_IDS[str(ability)]
         if "special_bonus" in ability_name:
-            ability_image = Image.open(f"assets/abilities/{left_or_right_talent(abilities_info, ability_name)}_talent_placeholder.png")
+            ability_image = Image.open(
+                f"assets/abilities/{left_or_right_talent(abilities_info, ability_name)}_talent_placeholder.png")
         else:
             ability_image = Image.open(f"assets/abilities/{ability_name}.png")
         field.paste(ability_image, (5 + i * 50, 5))
@@ -94,25 +100,3 @@ def mul_concat(image, times):
     for i in range(times - 1):
         picture = concatenate(picture, image)
     return picture
-
-
-ability_upgrades_arr = [
-            5055,
-            5052,
-            5053,
-            5055,
-            5052,
-            5057,
-            5053,
-            5052,
-            5052,
-            6062,
-            5055,
-            5057,
-            5053,
-            5053,
-            7060,
-            5055,
-            5058,
-            6840
-         ]

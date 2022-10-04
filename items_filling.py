@@ -5,6 +5,7 @@ import os
 
 items_data = requests.get("https://api.opendota.com/api/constants/items").json()
 
+
 def write_image(image_url, image_name):
     img_data = requests.get(image_url, stream=True).raw
     with open(f'assets/items/{image_name}.jpg', 'wb') as handler:

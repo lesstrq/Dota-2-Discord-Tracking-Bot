@@ -1,5 +1,3 @@
-from heroes_data import hero_names
-
 ABILITIES_IDS = {
     "0": "ability_base",
     "82": "bear_empty1",
