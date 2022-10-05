@@ -3,6 +3,7 @@ from abilities_ids import ABILITIES_IDS
 from heroes_data import hero_names
 import os
 
+
 def get_rank(n):
     rank_names = {
         1: "Herald",
@@ -45,3 +46,9 @@ def clear_temp():
     directory = "temporary_pictures/"
     for file in os.listdir(directory):
         os.remove(os.path.join(directory, file))
+
+
+def convert_unix_to_readable(unix_time, utc=3):
+    return datetime.datetime.utcfromtimestamp(unix_time + utc * 3600).strftime('%H:%M on %d %B of %Y') \
+           + f" (UTC {'+' if utc >= 0 else ''}{utc})"
+

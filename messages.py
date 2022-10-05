@@ -1,5 +1,3 @@
-import os
-
 import requests
 import getters
 import discord
@@ -7,8 +5,17 @@ import emoji
 import colors
 import picture
 import db_queries
+from getters import PlayerNotInGameException
 
 OPENDOTA_API_URL = "https://api.opendota.com/api/"
+
+
+def dota_id_is_not_digit():
+    embed = discord.Embed(title="Wrong ID format!",
+                          description="Dota 2 player ID should be digit",
+                          color=colors.RED)
+
+    return embed
 
 
 def already_bound(dota_id):
@@ -48,6 +55,22 @@ def closed_profile():
     return embed
 
 
+def wrong_id():
+    embed = discord.Embed(title="Something went wrong!",
+                          description="Dota 2 player ID is wrong or their match history is private!",
+                          color=colors.RED)
+
+    return embed
+
+
+def player_not_in_game(game_id):
+    embed = discord.Embed(title="Something went wrong!",
+                          description=f"This player didn't take part in game №{game_id}",
+                          color=colors.RED)
+
+    return embed
+
+
 def unbind():
     embed = discord.Embed(title="Everything went smooth!",
                           description=f"Successfully unbound",
@@ -56,8 +79,9 @@ def unbind():
     return embed
 
 
-def recent(discord_id):
-    dota_id = db_queries.get_dota_id(discord_id)
+def recent(discord_id=None, dota_id=None, game_id=None):
+    if not dota_id:
+        dota_id = db_queries.get_dota_id(discord_id)
 
     if not dota_id:
         embed = discord.Embed(title="Something went wrong!",
@@ -66,8 +90,17 @@ def recent(discord_id):
                               color=colors.RED)
 
         return [None, embed]
-
-    game = getters.RecentGame(dota_id)
+    try:
+        if game_id:
+            game = getters.Game(dota_id, game_id)
+        else:
+            game = getters.RecentGame(dota_id)
+    except KeyError:
+        return [None, wrong_id()]
+    except IndexError:
+        return [None, wrong_id()]
+    except PlayerNotInGameException:
+        return [None, player_not_in_game(game_id)]
 
     player_info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}").json()
     nickname = player_info["profile"]["personaname"]
@@ -80,11 +113,27 @@ def recent(discord_id):
     lobby_size = game.get_lobby_size()
 
     net_worth = game.get_net_worth()
+    gold_per_minute = game.get_gold_per_minute()
+    xp_per_minute = game.get_xp_per_minute()
+
+    last_hits = game.get_last_hits()
+    denies = game.get_denies()
+
     hero_damage = game.get_hero_damage()
+    tower_damage = game.get_tower_damage()
+
+    hero_healing = game.get_hero_healing()
 
     game_kda = game.get_kda()
     avg_kda = game.get_avg_kda()
     kda_emoji = emoji.choose_kda_emoji(game_kda, avg_kda)
+
+    overall_wins, overall_loses, overall_winrate = game.get_played_hero_stats()
+    last20_wins, last20_loses, last20_winrate = game.get_played_hero_stats_last_20_games()
+
+    empty_line = "\n"
+
+    start_time_line = f"{emoji.CLOCK} **{game.get_game_start_time()}**"
 
     lobby_size_line = "**Played in** " \
                       + ("Solo Queue" if lobby_size == 1 or not lobby_size
@@ -96,23 +145,56 @@ def recent(discord_id):
 
     result_line = f"Result: **{result} {emoji.win_or_lose_emoji(result)}**"
 
-    kda_line = f"K/D/A: **{game.get_kills()}/{game.get_deaths()}/{game.get_assists()} {kda_emoji}**"
+    kda_line = f"{kda_emoji}K/D/A: **{game.get_kills()}/{game.get_deaths()}/{game.get_assists()}" \
+               f"{emoji.top_emoji(game.get_top_kda(), game_kda)}**"
 
-    net_worth_line = f"Net Worth: **{net_worth}**{emoji.MONEY_WITH_WINGS}"
+    net_worth_line = f"{emoji.MONEY_WITH_WINGS}Net Worth: " \
+                     f"**{net_worth}**{emoji.top_emoji(game.get_top_net_worth(), net_worth)}"
 
-    hero_damage_line = f"Hero Damage: **{hero_damage}**{emoji.CROSSED_SWORDS}"
+    benchmarks_line = f"{emoji.SCALES}GPM: **{gold_per_minute}**   XPM: **{xp_per_minute}**"
 
-    lines = [lobby_size_line,
+    lh_dn_line = f"LH/DN : **{last_hits}/{denies}**" \
+                 f"{emoji.top_emoji(game.get_top_last_hits(), last_hits)}"
+
+    hero_damage_line = f"{emoji.CROSSED_SWORDS}Hero Damage: **{hero_damage}**" \
+                       f"{emoji.top_emoji(game.get_top_hero_damage(), hero_damage)}"
+    tower_damage_line = f"{emoji.HAMMER}Tower Damage: **{tower_damage}" \
+                        f"{emoji.top_emoji(game.get_top_tower_damage(), tower_damage)}**"
+
+    hero_healing_line = f"{emoji.MENDING_HEART}Hero Healing: **{hero_healing}" \
+                        f"{emoji.top_emoji(game.get_top_hero_healing(), hero_healing)}**"
+
+    overall_hero_stats_line = f"Overall **{hero_name}** winrate: " \
+                              f"**{overall_wins} - {overall_loses} ({overall_winrate}%**)"
+
+    last20_stats_line = f"**{hero_name}** winrate in last 20 matches: " \
+                              f"**{last20_wins} - {last20_loses} ({last20_winrate}%**)"
+
+    lines = [start_time_line,
+             lobby_size_line,
+             empty_line,
              hero_line,
              duration_line,
              result_line,
+             empty_line,
              kda_line,
              net_worth_line,
-             hero_damage_line]
+             benchmarks_line,
+             lh_dn_line,
+             empty_line,
+             hero_damage_line,
+             tower_damage_line,
+             hero_healing_line,
+             empty_line,
+             overall_hero_stats_line,
+             last20_stats_line]
 
-    embed = discord.Embed(title=f"Last {nickname}'s match:",
+    title = f"Last {nickname}'s match:" if not game_id else f"{nickname}'s performance \nin match №{game_id}"
+
+    embed = discord.Embed(title=title,
                           description='\n'.join(lines),
                           color=(colors.RED if result == "Lose" else colors.GREEN))
+
     embed.set_thumbnail(url=icon_url)
 
     player = game.get_player_detailed_info()

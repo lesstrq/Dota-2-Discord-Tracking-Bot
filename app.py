@@ -4,7 +4,6 @@ import discord
 from discord.ext import commands
 from db_connection import check_connection
 import misc
-import os
 import db_queries
 
 
@@ -39,6 +38,10 @@ async def bind(ctx, dota_id):
             await ctx.send(embed=messages.already_bound(dota_id_in_db))
             return
 
+        if not dota_id.isdigit():
+            await ctx.send(embed=messages.dota_id_is_not_digit())
+            return
+
         db_queries.insert_dota_id(ctx.author.id, dota_id)
         await ctx.send(embed=messages.bound_successfully(ctx.author.id, dota_id))
 
@@ -54,8 +57,25 @@ async def unbind(ctx):
 
 
 @bot.command()
-async def recent(ctx):
-    file_inv, embed = messages.recent(ctx.author.id)
+async def recent(ctx, some_id=None):
+    if some_id:
+        if '@' in some_id:
+            file_inv, embed = messages.recent(some_id[2:-1])
+        else:
+            file_inv, embed = messages.recent(dota_id=some_id)
+
+    else:
+        file_inv, embed = messages.recent(ctx.author.id)
+    await ctx.send(file=file_inv, embed=embed)
+    misc.clear_temp()
+
+
+@bot.command()
+async def game(ctx, game_id, discord_id=None):
+    if discord_id:
+        file_inv, embed = messages.recent(discord_id[2:-1], game_id=game_id)
+    else:
+        file_inv, embed = messages.recent(ctx.author.id, game_id=game_id)
     await ctx.send(file=file_inv, embed=embed)
     misc.clear_temp()
 
