@@ -4,7 +4,7 @@ import discord
 import emoji
 import colors
 import picture
-import db_queries
+from database import db_queries
 from getters import PlayerNotInGameException
 
 OPENDOTA_API_URL = "https://api.opendota.com/api/"
@@ -79,6 +79,41 @@ def unbind():
     return embed
 
 
+def stats(discord_id=None, dota_id=None):
+    if not dota_id:
+        dota_id = db_queries.get_dota_id(discord_id)
+    player = getters.Player(dota_id)
+
+    rank = player.get_rank()
+    last_days_games, last_days_wins, last_days_loses, last_days_winrate = player.get_stats_for_last_n_days().values()
+
+    most_played_heroes_data = player.get_most_played_heroes()
+
+    empty_line = ''
+
+    rank_line = f"**Rank:** {rank}"
+
+    last_days_line = f"**Last 30 days stats:** \nGames played: " \
+                     f"{last_days_games}\nWinrate: {last_days_wins} - {last_days_loses} ({last_days_winrate}%)"
+
+    hero_lines = ['**Most played heroes:**']
+    for hero in most_played_heroes_data:
+        hero_line = f"**{hero['hero_name']}:** {hero['games']} games played | " \
+                    f"{hero['wins']} - {hero['loses']} ({hero['winrate']}%)"
+        hero_lines.append(hero_line)
+
+    lines = [rank_line,
+             empty_line,
+             last_days_line,
+             empty_line] + hero_lines
+
+    embed = discord.Embed(title=f"{player.get_nickname()}'s stats:",
+                          description='\n'.join(lines))
+    embed.set_thumbnail(url=player.get_avatar_url())
+
+    return embed
+
+
 def recent(discord_id=None, dota_id=None, game_id=None):
     if not dota_id:
         dota_id = db_queries.get_dota_id(discord_id)
@@ -92,7 +127,7 @@ def recent(discord_id=None, dota_id=None, game_id=None):
         return [None, embed]
     try:
         if game_id:
-            game = getters.Game(dota_id, game_id)
+            game = getters.Game(dota_id, int(game_id))
         else:
             game = getters.RecentGame(dota_id)
     except KeyError:

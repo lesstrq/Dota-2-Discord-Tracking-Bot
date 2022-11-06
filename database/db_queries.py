@@ -1,4 +1,4 @@
-from db_connection import connect
+from database.db_connection import connect
 
 
 def get_dota_id(discord_id):

@@ -1,7 +1,7 @@
 from PIL import Image
 from PIL import ImageDraw
 import random
-from abilities_ids import ABILITIES_IDS
+from constants.ability_ids import ABILITIES_IDS
 from misc import hero_id_from_ability_id
 from constants.heroes import heroes
 from constants.hero_abilities import hero_abilities
@@ -55,7 +55,7 @@ def left_or_right_talent(abilities_info, ability_name):
             return "right" if i % 2 else "left"
 
 
-def create_skill_build_image(abilities, level):
+def create_skill_build_image(abilities: list[int], level: int) -> str:  # returns path to the created picture
     temp = []
     i = 0
     j = 1
@@ -85,17 +85,18 @@ def create_skill_build_image(abilities, level):
     field.save("assets/trial.png")
     filename = random.randint(1000000, 9999999)
     field.save(f"assets/{filename}.png", quality=100)
+
     return f"assets/{filename}.png"
 
 
-def concatenate(im1, im2):
+def concatenate(im1: Image, im2: Image) -> Image:
     dst = Image.new('RGB', (im1.width + im2.width, im1.height))
     dst.paste(im1, (0, 0))
     dst.paste(im2, (im1.width, 0))
     return dst
 
 
-def mul_concat(image, times):
+def mul_concat(image: Image, times: int) -> Image:
     picture = image.copy()
     for i in range(times - 1):
         picture = concatenate(picture, image)

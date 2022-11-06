@@ -2,8 +2,10 @@ import requests
 from constants.heroes import heroes
 import misc
 
+
 class PlayerNotInGameException(Exception):
     pass
+
 
 OPENDOTA_API_URL = "https://api.opendota.com/api/"
 player_slots = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 128: 5, 129: 6, 130: 7, 131: 8, 132: 9}
@@ -45,27 +47,47 @@ class Player:
     def get_avatar_url(self):
         return self.info["profile"]["avatarfull"]
 
+    def get_most_played_heroes(self, amount=5):
+        response = []
+        most_played_heroes = requests.get(OPENDOTA_API_URL + f'players/{self.dota_id}/heroes/').json()[:amount]
+        for hero in most_played_heroes:
+            games = hero['games']
+            wins = hero['win']
+            loses = games - wins
+            hero_name = heroes[hero['hero_id']]['localized_name']
+            winrate = round(100 * (wins / games), 2)
+            hero_info = {'hero_name': hero_name,
+                         'games': games,
+                         'wins': wins,
+                         'loses': loses,
+                         'winrate': winrate}
+            response.append(hero_info)
 
-class Game:
-    def __init__(self, dota_id, game_id):
-        game_id = int(game_id)
+        return response
+
+    def get_stats_for_last_n_days(self, amount=30):
+        games = requests.get(OPENDOTA_API_URL + f'players/{self.dota_id}/matches?date={amount}').json()
+        wins = 0
+        loses = 0
+        for game in games:
+            if misc.is_win(game['player_slot'], game['radiant_win']):
+                wins += 1
+            else:
+                loses += 1
+
+        response = {'games': wins + loses,
+                    'wins': wins,
+                    'loses': loses,
+                    'winrate': round(100 * wins / (wins + loses), 2)}
+
+        return response
+
+
+class BaseGame:
+    def __init__(self, dota_id, info, detailed_info):
         self.dota_id = dota_id
-        self.detailed_info = requests.get(f"http://api.opendota.com/api/matches/{game_id}").json()
-        is_in_game = False
-        for player in self.detailed_info['players']:
-            if player['account_id'] == dota_id:
-                is_in_game = True
-                break
-        if is_in_game:
-            temp = requests.get(f"https://api.opendota.com/api/players/{dota_id}/matches").json()
-            for match in temp:
-                print(match)
-                if match['match_id'] == game_id:
-                    self.info = match
-                    break
-        else:
-            raise PlayerNotInGameException
-
+        self.info = info
+        self.detailed_info = detailed_info
 
     def get_hero_id(self):
         return str(self.info['hero_id'])
@@ -222,9 +244,28 @@ class Game:
         return [wins, loses, winrate]
 
 
-class RecentGame(Game):
-    def __init__(self, dota_id):
-        self.dota_id = dota_id
-        self.info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}/matches?limit=1").json()[0]
-        self.detailed_info = requests.get(f"http://api.opendota.com/api/matches/{self.info['match_id']}").json()
+class Game:
+    def __init__(self, dota_id, game_id):
+        info = None
+        detailed_info = requests.get(f"http://api.opendota.com/api/matches/{game_id}").json()
+        is_in_game = False
+        for player in detailed_info['players']:
+            if player['account_id'] == dota_id:
+                is_in_game = True
+                break
+        if is_in_game:
+            temp = requests.get(f"https://api.opendota.com/api/players/{dota_id}/matches").json()
+            for match in temp:
+                if match['match_id'] == game_id:
+                    info = match
+                    break
+            super().__init__(dota_id, info, detailed_info)
+        else:
+            raise PlayerNotInGameException
 
+
+class RecentGame(BaseGame):
+    def __init__(self, dota_id):
+        info = requests.get(OPENDOTA_API_URL + f"players/{dota_id}/matches?limit=1").json()[0]
+        detailed_info = requests.get(f"http://api.opendota.com/api/matches/{info['match_id']}").json()
+        super().__init__(dota_id, info, detailed_info)
