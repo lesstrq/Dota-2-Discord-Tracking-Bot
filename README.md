@@ -1,6 +1,6 @@
 # Dota-2-Discord-Tracking-Bot
 
-## Get Started
+# Get Started
 
 
 Use [this link](https://discord.com/api/oauth2/authorize?client_id=1018905831401595000&permissions=8&redirect_uri=https%3A%2F%2Fgithub.com%2Flesstrq%2FDota-2-Discord-Tracking-Bot&response_type=code&scope=bot) to add the bot to your Discord server
